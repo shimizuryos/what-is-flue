@@ -8,6 +8,8 @@ import { ExchangeView, PastExchangeView } from './ExchangeView.tsx';
 export function RunPane(props: {
   lesson: Lesson;
   mode: RunMode;
+  /** 公開版（記録の再生だけ）のとき true */
+  hosted: boolean;
   conversationId: string;
   onConversationChange: (id: string) => void;
   initialData: string;
@@ -176,10 +178,10 @@ export function RunPane(props: {
               className="run-button"
               onClick={submit}
               disabled={!props.draft.trim() || !conversationOk}
-              title={props.mode === 'mock' ? 'モックLLMで実行' : '本物のLLMで実行'}
+              title={props.hosted ? 'サンプルの実行記録を再生' : props.mode === 'mock' ? 'モックLLMで実行' : '本物のLLMで実行'}
             >
               ▶ 実行
-              <small>{props.mode === 'mock' ? 'モック' : '本物のLLM'}</small>
+              <small>{props.hosted ? '記録を再生' : props.mode === 'mock' ? 'モック' : '本物のLLM'}</small>
             </button>
           )}
         </div>

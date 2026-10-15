@@ -39,6 +39,22 @@ cp .env.example .env
 
 レッスンのコードは `useModel('anthropic/claude-haiku-4-5')` を使っています。ほかのプロバイダーを使う場合は、エディタで `useModel()` の文字列を書き換え、対応するキー（`OPENAI_API_KEY` など）を設定してください。
 
+## 公開版（Cloudflare Workers）
+
+UI は Cloudflare Workers でも公開しています（URL はデプロイ後にここへ追記します）。
+
+- 公開版では **コードの実行はできません**。実行には Node.js のサーバー（子プロセス・Vite・SQLite）が必要で、Workers では動かないためです
+- レッスンを読む・コードを編集する・🔍 で中身を見る、はできます
+- 「試す:」のサンプルメッセージを **元のコードのまま** 送ると、CI がモックLLMで実際に実行して記録した結果を再生します
+- コードを書き換えて実行したいときは、上の手順で手元に起動してください
+
+デプロイは GitHub Actions（`.github/workflows/deploy.yml`）が行います。
+
+1. PR と push のたびに、型チェック → 全レッスンの実行テスト（結果を `web/public/recordings/` に記録）→ UI のビルド
+2. `main` への push のときだけ、ビルド結果を `wrangler deploy` で公開（`/api/*` は `worker/index.ts` が「公開版です」と応答する）
+
+必要な GitHub の Secret は `CLOUDFLARE_API_TOKEN`（「Edit Cloudflare Workers」テンプレートで作ったトークン）と `CLOUDFLARE_ACCOUNT_ID` です。手元で公開版を試すには `npm test -- --record web/public/recordings && npm run build && npx wrangler dev` を実行します。
+
 ## モックLLM のルール
 
 モックLLM は、本物の LLM の代わりに決まったルールで応答する偽物のモデルです（Pi の faux provider を使用）。文章は賢くありませんが、フックの実行・ツール呼び出し・会話の保存など **Flue 側の動きはすべて本物** です。
@@ -89,6 +105,8 @@ lessons/<番号-名前>/lesson.md   … レッスン本文（frontmatter に実�
 lessons/<番号-名前>/files/      … エディタに表示される Flue のコード
 server/                         … API サーバーとランナー、モックLLM
 web/                            … フロントエンド
+worker/                         … 公開版（Cloudflare Workers）の /api/* を処理する Worker
+wrangler.jsonc                  … Cloudflare Workers の設定
 scripts/test-lessons.ts         … 全レッスンの自動実行テスト
 ```
 

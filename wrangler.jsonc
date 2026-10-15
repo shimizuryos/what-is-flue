@@ -1,0 +1,19 @@
+// Cloudflare Workers への公開設定（UI の公開版）。
+// 静的アセット（vite build の出力 = dist/）を配信し、/api/* だけ worker/index.ts が応答します。
+// 公開版ではコードの実行はできません（実行には Node.js が必要なため、手元で npm run dev します）。
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Worker 名。公開 URL が https://flue-playground.{subdomain}.workers.dev になる
+  "name": "flue-playground",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-10-15",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    // 1 ページのアプリ（SPA）なので、知らないパスには index.html を返す
+    "not_found_handling": "single-page-application",
+    // /api/* だけは静的ファイルより先に Worker を動かす
+    "run_worker_first": ["/api/*"]
+  },
+  "observability": { "enabled": true }
+}

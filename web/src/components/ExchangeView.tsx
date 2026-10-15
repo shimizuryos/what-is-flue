@@ -22,7 +22,8 @@ export function ExchangeView({ exchange, defaultOpen }: { exchange: Exchange; de
       <div className="bubble user-bubble">
         <div className="bubble-text">{exchange.message}</div>
         <div className="bubble-meta">
-          {exchange.conversationId} · {exchange.mode === 'mock' ? '🤖 モック' : '✨ 本物のLLM'}
+          {exchange.conversationId} ·{' '}
+          {exchange.replay ? '📼 記録を再生（モックLLM）' : exchange.mode === 'mock' ? '🤖 モック' : '✨ 本物のLLM'}
         </div>
       </div>
 

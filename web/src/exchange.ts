@@ -17,6 +17,8 @@ export type ExchangeStatus = 'running' | 'completed' | 'failed' | 'aborted' | 'e
 export interface Exchange {
   id: string;
   message: string;
+  /** 公開版で、記録した実行結果を再生しているとき true */
+  replay?: boolean;
   conversationId: string;
   mode: RunMode;
   startedAt: number;
@@ -41,10 +43,11 @@ export interface ExchangeSummary {
   errorText?: string;
 }
 
-export function createExchange(message: string, conversationId: string, mode: RunMode): Exchange {
+export function createExchange(message: string, conversationId: string, mode: RunMode, replay = false): Exchange {
   return {
     id: crypto.randomUUID(),
     message,
+    replay,
     conversationId,
     mode,
     startedAt: Date.now(),
