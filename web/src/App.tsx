@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { RunMode } from '../../server/protocol.ts';
-import { fetchStatus, resetWorkspace, runAgent, type ServerStatus } from './api.ts';
+import type { RunEvent, RunMode } from '../../server/protocol.ts';
+import { fetchRecording, fetchStatus, replayEvents, resetWorkspace, runAgent, type ServerStatus } from './api.ts';
 import { EditorPane } from './components/EditorPane.tsx';
 import { HelpDialog } from './components/HelpDialog.tsx';
 import { LessonPane } from './components/LessonPane.tsx';
@@ -148,7 +148,14 @@ export function App() {
       abortRef.current = controller;
       const runLessonId = lesson.id;
       const runEpoch = historyEpochRef.current;
-      const exchange = createExchange(text, conversationId, mode);
+      // 公開版はコードを実行できないので、元のコードのままサンプルメッセージを送ったときだけ記録を再生する
+      const hosted = status?.hosted === true;
+      const unmodified =
+        Object.keys(files).length === Object.keys(lesson.files).length &&
+        Object.entries(lesson.files).every(([path, content]) => files[path] === content);
+      const recorded =
+        hosted && unmodified ? (await fetchRecording(lesson.id))?.runs.find((r) => r.message === text) : undefined;
+      const exchange = createExchange(text, conversationId, recorded ? 'mock' : mode, Boolean(recorded));
       let current = exchange;
       setExchanges((previous) => [...previous, exchange]);
       setDraft('');
@@ -159,22 +166,40 @@ export function App() {
       };
 
       try {
-        await runAgent(
-          {
-            clientId,
-            lessonId: lesson.id,
-            files,
-            entry: lesson.entry,
-            agentName: lesson.agentName,
-            conversationId,
-            message: text,
-            initialData: initialData.trim() || undefined,
-            mode,
-            http: lesson.http ? { mountPath: mountPath || lesson.http } : undefined,
-          },
-          (event) => update(applyEvent(current, event)),
-          controller.signal,
-        );
+        if (recorded) {
+          await replayEvents(recorded.events, (event) => update(applyEvent(current, event)), controller.signal);
+        } else if (hosted) {
+          for (const event of [
+            {
+              type: 'error',
+              phase: 'server',
+              message: '公開版では、このメッセージ・コードは実行できません。',
+              hint: unmodified
+                ? '公開版で再生できるのは「試す:」のサンプルメッセージだけです。自由なメッセージを送るには、手元でアプリを起動してください（npm install → npm run dev）。'
+                : 'コードを書き換えた場合は、手元でアプリを起動して実行してください（npm install → npm run dev）。↺ リセットで元のコードに戻すと、サンプルの記録を再生できます。',
+            },
+            { type: 'done', outcome: 'error', elapsedMs: 0 },
+          ] satisfies RunEvent[]) {
+            update(applyEvent(current, event));
+          }
+        } else {
+          await runAgent(
+            {
+              clientId,
+              lessonId: lesson.id,
+              files,
+              entry: lesson.entry,
+              agentName: lesson.agentName,
+              conversationId,
+              message: text,
+              initialData: initialData.trim() || undefined,
+              mode,
+              http: lesson.http ? { mountPath: mountPath || lesson.http } : undefined,
+            },
+            (event) => update(applyEvent(current, event)),
+            controller.signal,
+          );
+        }
       } catch (error) {
         if (controller.signal.aborted) {
           update({ ...current, status: 'aborted', statusText: undefined });
@@ -194,7 +219,7 @@ export function App() {
       save(`history:${runLessonId}`, next);
       if (lessonIdRef.current === runLessonId) setHistory(next);
     },
-    [running, conversationId, mode, clientId, lesson, files, initialData, mountPath],
+    [running, conversationId, mode, clientId, lesson, files, initialData, mountPath, status],
   );
 
   const stop = useCallback(() => abortRef.current?.abort(), []);
@@ -246,9 +271,11 @@ export function App() {
             disabled={!status?.realModeAvailable}
             onClick={() => setMode('real')}
             title={
-              status?.realModeAvailable
-                ? `APIキーが設定されたプロバイダー: ${status.providersWithKeys.join(', ')}`
-                : 'APIキーが設定されていません（.env を作成してサーバーを再起動してください）'
+              status?.hosted
+                ? '公開版では使えません（手元で起動し、.env に API キーを設定すると使えます）'
+                : status?.realModeAvailable
+                  ? `APIキーが設定されたプロバイダー: ${status.providersWithKeys.join(', ')}`
+                  : 'APIキーが設定されていません（.env を作成してサーバーを再起動してください）'
             }
           >
             ✨ 本物のLLM
@@ -260,6 +287,16 @@ export function App() {
       </header>
 
       {statusError && <div className="banner banner-error">{statusError}</div>}
+      {status?.hosted && (
+        <div className="banner banner-info">
+          🌐 これは公開版です。レッスンを読み、コードを編集できます。「試す:」のサンプルを送ると、モックLLMで実行した記録を再生します。
+          コードを書き換えて実行するには{' '}
+          <a href={`${status.repositoryUrl ?? ''}#動かし方`} target="_blank" rel="noreferrer">
+            手元で起動
+          </a>
+          してください。
+        </div>
+      )}
 
       <nav className="mobile-tabs" aria-label="表示切り替え">
         {(
@@ -299,6 +336,7 @@ export function App() {
         <RunPane
           lesson={lesson}
           mode={mode}
+          hosted={status?.hosted === true}
           conversationId={conversationId}
           onConversationChange={changeConversation}
           initialData={initialData}

@@ -5,3 +5,7 @@ dist/
 .env.*
 !.env.example
 *.log
+
+# 公開版の UI が再生する、サンプル実行の記録（CI で npm test -- --record から生成）
+web/public/recordings/
+.wrangler/

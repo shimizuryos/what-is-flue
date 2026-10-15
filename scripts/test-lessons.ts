@@ -1,6 +1,8 @@
 // 全レッスンのサンプルメッセージを、モックLLMモードで実際に実行して確かめるスクリプト。
 //   npm test                 … 全レッスン
 //   npm test -- 03-tools     … 指定したレッスンだけ
+//   npm test -- --record web/public/recordings
+//                            … 実行結果のイベントを JSON に保存する（公開版の UI が再生に使う）
 //
 // 各メッセージについて「正常に完了したか」と「期待したツールが呼ばれたか」を検査します。
 
@@ -31,7 +33,10 @@ const EXPECTED_TOOLS: Record<string, string[][]> = {
   '11-playground': [['set_destination'], ['weather', 'activate_skill'], ['task']],
 };
 
-const only = process.argv.slice(2).filter((arg) => !arg.startsWith('-'));
+const args = process.argv.slice(2);
+const recordIndex = args.indexOf('--record');
+const recordDir = recordIndex >= 0 ? path.resolve(args[recordIndex + 1] ?? 'web/public/recordings') : undefined;
+const only = args.filter((arg, index) => !arg.startsWith('-') && (recordIndex < 0 || index !== recordIndex + 1));
 const lessonIds = fs
   .readdirSync(LESSONS)
   .filter((name) => fs.existsSync(path.join(LESSONS, name, 'lesson.md')))
@@ -46,9 +51,10 @@ for (const id of lessonIds) {
   const workspace = path.join(WORK, id);
   copyDir(path.join(LESSONS, id, 'files'), workspace);
   console.log(`\n■ ${id} — ${meta.title}`);
+  const recording: { message: string; events: RunEvent[] }[] = [];
 
   for (const [index, message] of meta.messages.entries()) {
-    const events = await run({
+    const { events, stderr } = await run({
       workspace,
       entry: meta.entry,
       agentName: meta.agentName,
@@ -65,6 +71,8 @@ for (const id of lessonIds) {
     const expected = EXPECTED_TOOLS[id]?.[index] ?? [];
     const missing = missingTools(expected, tools);
 
+    recording.push({ message, events });
+
     const problems: string[] = [];
     if (done?.outcome !== 'completed') problems.push(`outcome=${done?.outcome ?? '(none)'}`);
     for (const error of errors) problems.push(`error: ${error.message}`);
@@ -73,19 +81,27 @@ for (const id of lessonIds) {
 
     const label = `  ${problems.length === 0 ? '✓' : '✗'} "${oneLine(message).slice(0, 50)}" → [${tools.join(', ')}] ${done?.elapsedMs ?? '?'}ms`;
     console.log(label);
+    if (stderr.trim()) console.log(`      (stderr) ${stderr.trim().slice(0, 500)}`);
     if (problems.length > 0) {
       failures++;
       for (const problem of problems) console.log(`      ${problem}`);
     }
   }
+
+  if (recordDir) {
+    fs.mkdirSync(recordDir, { recursive: true });
+    const file = path.join(recordDir, `${id}.json`);
+    fs.writeFileSync(file, JSON.stringify({ lessonId: id, recordedAt: new Date().toISOString(), runs: recording }));
+  }
 }
+if (recordDir) console.log(`\n実行結果を ${path.relative(ROOT, recordDir)}/ に保存しました。`);
 
 console.log(failures === 0 ? '\nすべてのレッスンが正常に動きました。' : `\n${failures} 件の失敗があります。`);
 process.exit(failures === 0 ? 0 : 1);
 
 // ---------------------------------------------------------------------------
 
-function run(input: RunnerInput): Promise<RunEvent[]> {
+function run(input: RunnerInput): Promise<{ events: RunEvent[]; stderr: string }> {
   return new Promise((resolve, reject) => {
     const env = { ...process.env };
     for (const key of Object.keys(env)) if (/_API_KEY$/.test(key)) delete env[key];
@@ -107,8 +123,7 @@ function run(input: RunnerInput): Promise<RunEvent[]> {
         .split('\n')
         .filter(Boolean)
         .map((line) => JSON.parse(line) as RunEvent);
-      if (stderr.trim()) events.push({ type: 'log', level: 'stderr', text: stderr });
-      resolve(events);
+      resolve({ events, stderr });
     });
     child.stdin!.end(JSON.stringify(input));
   });

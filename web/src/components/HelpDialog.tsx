@@ -38,6 +38,21 @@ export function HelpDialog(props: { status: ServerStatus | null; onClose: () => 
             <strong>🔍 モデルへの入力</strong> を押すと LLM に実際に送られたシステムプロンプト・ツール一覧・会話履歴を確認できます。
           </p>
 
+          {props.status?.hosted && (
+            <>
+              <h3>🌐 公開版について</h3>
+              <p>
+                このページは Cloudflare Workers で公開している閲覧用の版です。コードの実行には Node.js のサーバーが必要なため、ここでは
+                <strong>「試す:」のサンプルメッセージを、元のコードのまま送ったときだけ</strong>、モックLLMで実行した記録を再生します。
+                コードを書き換えて実行するには、
+                <a href={`${props.status.repositoryUrl ?? ''}#動かし方`} target="_blank" rel="noreferrer">
+                  リポジトリ
+                </a>
+                を手元に clone して <code>npm install</code> → <code>npm run dev</code> で起動してください。
+              </p>
+            </>
+          )}
+
           <h3>🤖 モックLLM（APIキー不要）</h3>
           <p>本物の LLM の代わりに、次のルールで応答する偽物のモデルです。文章は賢くありませんが、Flue 側の動きはすべて本物です。</p>
           <ul>
@@ -65,7 +80,9 @@ export function HelpDialog(props: { status: ServerStatus | null; onClose: () => 
           </p>
           <p className="muted">
             {props.status
-              ? props.status.realModeAvailable
+              ? props.status.hosted
+                ? '公開版では本物のLLMは使えません。'
+                : props.status.realModeAvailable
                 ? `現在 API キーが設定されているプロバイダー: ${props.status.providersWithKeys.join(', ')}`
                 : '現在 API キーは設定されていません（モックLLMで動作します）。'
               : 'サーバーの状態を確認中…'}
